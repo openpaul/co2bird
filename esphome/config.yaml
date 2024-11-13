@@ -1,0 +1,118 @@
+substitutions:
+  name: esphome-web-6dba53
+  friendly_name: CO2Bird
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+  min_version: 2024.6.0
+  name_add_mac_suffix: false
+  project:
+    name: esphome.web
+    version: '1.0'
+
+esp8266:
+  board: esp01_1m
+
+# Enable logging
+logger:
+
+# Enable Home Assistant API
+api:
+
+# Allow Over-The-Air updates
+ota:
+- platform: esphome
+
+# Allow provisioning Wi-Fi via serial
+improv_serial:
+
+wifi:
+  # Set up a wifi access point
+  ap: {}
+
+# In combination with the `ap` this allows the user
+# to provision wifi credentials to the device via WiFi AP.
+captive_portal:
+
+dashboard_import:
+  package_import_url: github://esphome/example-configs/esphome-web/esp8266.yaml@main
+  import_full_config: true
+
+# To have a "next url" for improv serial
+web_server:
+
+
+
+
+# Example configuration entry
+servo:
+  - id: my_servo
+    output: pwm_output
+    transition_length: 3s
+    min_level: 0.023 # 0.02 was 0.0235
+    max_level: 0.12 # 0.12
+
+# Servo output
+output:
+  - platform: esp8266_pwm
+    id: pwm_output
+    pin: GPIO0 #D3
+    frequency: 50 Hz
+
+
+number:
+  - platform: template
+    name: Servo Control
+    min_value: -100
+    initial_value: 0
+    max_value: 100
+    step: 1
+    optimistic: true
+    set_action:
+      then:
+        - servo.write:
+            id: my_servo
+            level: !lambda 'return x / 100.0;'
+
+
+# Co2 sensor
+i2c:
+  sda: GPIO4 # D2
+  scl: GPIO5 # D1
+  scan: true
+  id: co2bus
+
+sensor:
+  - platform: scd4x
+    co2:
+      name: "Bird CO2"
+      on_value: 
+        then:
+          - lambda: |-
+              // Set servo position based on CO2 value
+              float position;
+              float min_value = -1.0;
+              float max_value = 0.9;
+
+              int min_ppm = 600;
+              int max_ppm = 1000;
+
+              if (x < min_ppm) {
+                position = -max_value;
+              } else if (x > max_ppm) {
+                position = -min_value;
+              } else {
+                // Linear mapping from 600-1000 ppm
+                float m = (min_value-max_value)/(max_ppm-min_ppm);
+                float c = max_value-min_ppm * m;
+                position = -1 * (m * x + c);
+              }
+              id(my_servo).write(position);
+
+    temperature:
+      name: "Bird Temperatur"
+    humidity:
+      name: "Bird Humidity"
+    update_interval: 300s
+    measurement_mode: single_shot
